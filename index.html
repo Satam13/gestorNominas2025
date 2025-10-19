@@ -1,578 +1,331 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Calculadora Nómina — Seguridad Privada 2025</title>
-
-<!-- Tailwind (CDN) -->
-<script src="https://cdn.tailwindcss.com"></script>
-
-<!-- PDF.js (CDN) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-
-<!-- Tesseract.js (OCR fallback) -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
-
-<!-- xlsx and jsPDF -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-<style>
-  body{background:#f8fafc}
-  .table-like{display:grid;grid-template-columns:56px 140px 1fr 160px 120px 100px 120px;gap:6px;align-items:center}
-  .cell{border:1px solid #e6eef6;padding:.35rem;min-width:80px;background:#fff}
-  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco,"Roboto Mono","Courier New",monospace}
-  .btn{padding:.45rem .75rem;border-radius:.375rem}
-  .error-list{max-height:220px;overflow:auto;border:1px solid #fee2e2;background:#fff7f7;padding:.5rem;border-radius:.25rem}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Extractor de cuadrante + horas extras detalladas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <style>
+    .cell-break { white-space: pre-wrap; word-break: break-word; }
+    .small { font-size: 0.9rem; color: #4b5563; }
+  </style>
 </head>
-<body class="p-6">
-<div class="max-w-6xl mx-auto">
-  <header class="mb-4">
-    <h1 class="text-2xl font-semibold">Calculadora nómina — Seguridad Privada 2025</h1>
-    <p class="text-sm text-slate-600">Importa cuadrantes (PDF/XLSX/CSV) de tipo "Orden de Trabajo" (Securitas). Extrae días/turnos, detecta pluses y genera nómina.</p>
-  </header>
+<body class="bg-gray-50 text-gray-800 min-h-screen flex items-start justify-center p-6">
+  <div class="w-full max-w-7xl bg-white shadow-md rounded-lg p-6">
+    <h1 class="text-2xl font-semibold mb-4">Extractor de cuadrante + horas extras detalladas</h1>
 
-  <!-- Config -->
-  <section class="bg-white p-4 rounded shadow mb-4">
-    <div class="grid md:grid-cols-3 gap-3">
-      <div>
-        <label class="block text-xs text-slate-600">Salario base mensual</label>
-        <input id="cfg_salarioBase" class="border rounded px-2 py-1 w-full" value="1127.46" />
-      </div>
-      <div>
-        <label class="block text-xs text-slate-600">Plus radioscopia (€/h)</label>
-        <input id="cfg_rad_h" class="border rounded px-2 py-1 w-full" value="0.20" />
-      </div>
-      <div>
-        <label class="block text-xs text-slate-600">Horas estándar mes</label>
-        <input id="cfg_horasEstandar" class="border rounded px-2 py-1 w-full" value="173.3333" />
-      </div>
+    <div class="mb-3 flex items-center gap-3">
+      <label class="w-full">
+        <span class="block text-sm text-gray-600 mb-1">Selecciona el archivo PDF:</span>
+        <input id="fileInput" type="file" accept="application/pdf" class="block w-full" />
+      </label>
+      <div id="fileName" class="text-sm text-gray-500"></div>
     </div>
-    <div id="festUpdateArea" class="mt-3"></div>
-  </section>
 
-  <!-- Import / historial -->
-  <section class="bg-white p-4 rounded shadow mb-4">
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="font-semibold">Importar cuadrante (PDF / XLSX / CSV)</h2>
-      <div class="flex gap-2">
-        <input id="fileInput" type="file" accept=".pdf,.xlsx,.csv" class="hidden" />
-        <button id="btnFile" class="btn bg-sky-600 text-white">Seleccionar archivo</button>
-        <button id="btnImportNow" class="btn bg-emerald-600 text-white">Importar</button>
+    <div class="mb-2 flex items-center gap-4">
+      <div id="status" class="text-sm text-gray-700">Esperando PDF...</div>
+      <div id="verification" class="text-sm"></div>
+    </div>
+
+    <div class="mb-4">
+      <label class="block text-sm font-medium mb-1">Festivos (editable, formato DD-MM; separados por comas)</label>
+      <textarea id="holidaysInput" class="border p-2 rounded w-full font-mono text-sm" rows="2"></textarea>
+      <div class="text-xs text-gray-500 mt-1">Ejemplo: 01-01,06-01,01-05,15-08,12-10,01-11,06-12,08-12,25-12</div>
+      <div class="mt-2 flex gap-2">
+        <button id="saveHolidays" class="px-3 py-1 bg-blue-600 text-white rounded">Guardar festivos</button>
+        <button id="resetHolidays" class="px-3 py-1 border rounded">Restablecer por defecto</button>
       </div>
     </div>
 
-    <div class="flex gap-2 mb-3">
-      <div>
-        <label class="text-xs">Meses importados (histórico)</label>
-        <select id="mesSelector" class="border rounded px-2 py-1"></select>
-      </div>
-      <div>
-        <label class="text-xs">Límite archivo (MB)</label>
-        <input id="fileLimit" type="number" class="border rounded px-2 py-1 w-24" value="10" />
-      </div>
-      <div>
-        <label class="text-xs">Periodo (si XLS/CSV sin mes)</label>
-        <input id="periodoDefault" class="border rounded px-2 py-1" value="2025-10" />
-      </div>
-      <div class="self-end">
-        <button id="btnLoadLast" class="btn bg-slate-200">Cargar último</button>
-      </div>
-    </div>
+    <div id="extras" class="mb-2 text-sm font-medium"></div>
 
-    <div id="ocrStatus" class="text-sm text-slate-500 mb-2">Estado OCR: esperando archivo...</div>
+    <div id="tableContainer" class="overflow-x-auto"></div>
 
-    <div id="errorBox" class="hidden mb-2">
-      <div class="text-sm font-semibold text-red-600">Líneas con errores (se han saltado):</div>
-      <div id="errorList" class="error-list mt-1"></div>
-    </div>
-  </section>
-
-  <!-- Cuadrante editable -->
-  <section class="bg-white p-4 rounded shadow mb-4">
-    <div class="flex justify-between items-center mb-2">
-      <h2 class="font-semibold">Cuadrante (editable)</h2>
-      <div class="flex gap-2">
-        <button id="addRow" class="btn bg-emerald-600 text-white">Añadir fila</button>
-        <button id="dupRow" class="btn bg-slate-200">Duplicar seleccionada</button>
-        <button id="clearAll" class="btn bg-red-600 text-white">Limpiar tabla</button>
-        <button id="exportXlsx" class="btn bg-indigo-600 text-white">Exportar XLSX</button>
-      </div>
-    </div>
-
-    <div class="table-like font-semibold text-xs mb-2">
-      <div class="cell">Día</div>
-      <div class="cell">Horario</div>
-      <div class="cell">Situación / Servicio</div>
-      <div class="cell">Pluses detectados (editable)</div>
-      <div class="cell">Centro</div>
-      <div class="cell">Localidad</div>
-      <div class="cell">H.día</div>
-    </div>
-
-    <div id="grid" class="space-y-1"></div>
-  </section>
-
-  <!-- Cálculo / Resumen -->
-  <section class="bg-white p-4 rounded shadow mb-8">
-    <div class="flex gap-3 mb-3">
-      <div>
-        <label class="text-xs">Periodo activo (YYYY-MM)</label>
-        <input id="periodo" class="border rounded px-2 py-1" value="2025-10" />
-      </div>
-      <div>
-        <label class="text-xs">Trabajador</label>
-        <input id="trabajador" class="border rounded px-2 py-1" value="ARANDA ZAMORA, MANUEL" />
-      </div>
-      <div>
-        <label class="text-xs">Incluir sáb-dom como festivo</label>
-        <select id="festFind" class="border rounded px-2 py-1"><option value="si">Sí</option><option value="no">No</option></select>
-      </div>
-    </div>
-
-    <div class="flex gap-2 mb-3">
-      <button id="calcular" class="btn bg-emerald-600 text-white">Calcular nómina</button>
-      <button id="verResumen" class="btn bg-slate-200">Ver resumen</button>
-      <button id="exportPdf" class="btn bg-indigo-600 text-white">Exportar PDF</button>
-    </div>
-
-    <div id="resumen" class="hidden">
-      <h3 class="font-semibold">Resumen</h3>
-      <div id="output" class="text-sm mt-2"></div>
-    </div>
-  </section>
-
-  <footer class="text-xs text-slate-500">Nota: OCR heurístico. Revisa siempre las líneas marcadas en errores si aparecen.</footer>
-</div>
+    <template id="tableTemplate">
+      <table class="min-w-full border-collapse">
+        <thead>
+          <tr class="bg-gray-100">
+            <th class="px-3 py-2 text-left">Día</th>
+            <th class="px-3 py-2 text-left">Horario</th>
+            <th class="px-3 py-2 text-left">Servicio - Producto</th>
+            <th class="px-3 py-2 text-right">H. DIA</th>
+            <th class="px-3 py-2 text-right">Festivo (h)</th>
+            <th class="px-3 py-2 text-right">Nocturna (h)</th>
+            <th class="px-3 py-2 text-right">Ra. Básica (h)</th>
+            <th class="px-3 py-2 text-right">Extras Festivo</th>
+            <th class="px-3 py-2 text-right">Extras Nocturna</th>
+            <th class="px-3 py-2 text-right">Extras Ra. Básica</th>
+            <th class="px-3 py-2 text-right">Vigilante con arma (h teóricas)</th>
+            <th class="px-3 py-2 text-right">Vigilante con arma (h extras)</th>
+            <th class="px-3 py-2 text-right">H. Extras</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+        <tfoot>
+          <tr class="bg-gray-50">
+            <td colspan="3" class="px-3 py-2 font-semibold text-right">Totales:</td>
+            <td id="totalHoras" class="px-3 py-2 font-semibold text-right">0,00</td>
+            <td id="totalFestivo" class="px-3 py-2 font-semibold text-right">0,00</td>
+            <td id="totalNocturno" class="px-3 py-2 font-semibold text-right">0,00</td>
+            <td id="totalRadioscopia" class="px-3 py-2 font-semibold text-right">0,00</td>
+            <td id="totalExtrasFestivo" class="px-3 py-2 font-semibold text-right">0,00</td>
+            <td id="totalExtrasNocturno" class="px-3 py-2 font-semibold text-right">0,00</td>
+            <td id="totalExtrasRadioscopia" class="px-3 py-2 font-semibold text-right">0,00</td>
+            <td id="totalVigilanteTeoricas" class="px-3 py-2 font-semibold text-right">0,00</td>
+            <td id="totalVigilanteExtras" class="px-3 py-2 font-semibold text-right">0,00</td>
+            <td id="totalHorasExtras" class="px-3 py-2 font-semibold text-right">0,00</td>
+          </tr>
+        </tfoot>
+      </table>
+    </template>
+  </div>
 
 <script>
-// ------------------------ Utilidades ------------------------
-const $ = id => document.getElementById(id);
-function hhmmToMinutes(h){ if(!h) return 0; const [H,M]=h.split(':').map(x=>Number(x)); return H*60 + (M||0); }
-function normalize(s){ return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
-function safeText(s){ return (s||'').toString().replace(/\\s+/g,' ').trim(); }
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-// ------------------------ Festivos (Nager.Date + cache + fallback) ------------------------
-const FESTIVOS_FALLBACK = {
-  "2025":["2025-01-01","2025-01-06","2025-04-18","2025-05-01","2025-08-15","2025-10-12","2025-11-01","2025-12-06","2025-12-08","2025-12-25"]
+const fileInput = document.getElementById('fileInput');
+const status = document.getElementById('status');
+const tableContainer = document.getElementById('tableContainer');
+const fileNameEl = document.getElementById('fileName');
+const extrasEl = document.getElementById('extras');
+const holidaysInput = document.getElementById('holidaysInput');
+const saveHolidaysBtn = document.getElementById('saveHolidays');
+const resetHolidaysBtn = document.getElementById('resetHolidays');
+
+const defaultHolidays = ['01-01','06-01','01-05','15-08','12-10','01-11','06-12','08-12','25-12'];
+let holidayList = [...defaultHolidays];
+holidaysInput.value = holidayList.join(',');
+
+saveHolidaysBtn.addEventListener('click', () => {
+  holidayList = holidaysInput.value.split(',').map(s => s.trim()).filter(Boolean);
+  status.textContent = 'Festivos actualizados.';
+});
+resetHolidaysBtn.addEventListener('click', () => {
+  holidayList = [...defaultHolidays];
+  holidaysInput.value = holidayList.join(',');
+  status.textContent = 'Festivos restablecidos.';
+});
+
+const monthNames = {
+  'enero':0,'febrero':1,'marzo':2,'abril':3,'mayo':4,'junio':5,
+  'julio':6,'agosto':7,'septiembre':8,'setiembre':8,'octubre':9,'noviembre':10,'diciembre':11
 };
 
-async function fetchFestivosFromAPI(year){
-  const url = `https://date.nager.at/api/v3/PublicHolidays/${year}/ES`;
-  try{
-    const r = await fetch(url);
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    const dates = data.map(d=>d.date);
-    localStorage.setItem(`festivos_${year}`, JSON.stringify({fromApi:true,fetchedAt:new Date().toISOString(),dates}));
-    return {dates, fromApi:true};
-  }catch(e){
-    console.warn('fetchFestivosFromAPI error', e);
-    return null;
+function isLeapYear(y){ return (y%4===0 && y%100!==0) || (y%400===0); }
+
+function parseHorario(day, monthIndex, year, horario){
+  if(!horario || horario.toUpperCase()==='LIBRE') return null;
+  const m = horario.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  if(!m) return null;
+  const [_, sh, sm, eh, em] = m.map(Number);
+  const start = new Date(year, monthIndex, day, sh, sm, 0);
+  let end = new Date(year, monthIndex, day, eh, em, 0);
+  if(end <= start) end.setDate(end.getDate()+1);
+  return {start, end};
+}
+
+function overlap(aStart, aEnd, bStart, bEnd){
+  const s = aStart > bStart ? aStart : bStart;
+  const e = aEnd < bEnd ? aEnd : bEnd;
+  const diff = (e - s) / 3600000;
+  return diff > 0 ? diff : 0;
+}
+
+function format(n){ return n.toFixed(2).replace('.', ','); }
+
+function limpiarServicio(text) {
+  if (!text) return '—';
+  const stopWords = /(SILC|CAIXABANK|CPD|Camí|Parc|Cerdanyola|VALLES|INMOBLES)/i;
+  const m = text.match(stopWords);
+  if (m) text = text.substring(0, m.index).trim();
+  text = text.replace(/^SERVICIO\s*/i, '').trim();
+  return text || '—';
+}
+
+function generateFestiveIntervals(month, year, rows){
+  const intervals = [];
+  for(const e of holidayList){
+    const [d,m] = e.split('-').map(Number);
+    if(!d||!m) continue;
+    const start = new Date(year, m-1, d, 0,0,0);
+    const end = new Date(year, m-1, d+1, 0,0,0);
+    intervals.push({start, end});
   }
+  return intervals;
 }
 
-function getFestivosFromCache(year){
-  const raw = localStorage.getItem(`festivos_${year}`);
-  if(!raw) return null;
-  try{ return JSON.parse(raw); }catch(e){ return null; }
-}
+fileInput.addEventListener('change', async ev=>{
+  const file = ev.target.files[0];
+  if(!file) return;
+  fileNameEl.textContent = file.name;
+  status.textContent = 'Leyendo PDF...';
+  extrasEl.textContent = '';
 
-async function getFestivos(year){
-  year = String(year);
-  const cached = getFestivosFromCache(year);
-  if(cached && Array.isArray(cached.dates) && cached.dates.length) return {set:new Set(cached.dates), fromApi:!!cached.fromApi};
-  const api = await fetchFestivosFromAPI(year);
-  if(api && api.dates && api.dates.length) return {set:new Set(api.dates), fromApi:true};
-  const fb = FESTIVOS_FALLBACK[year] || [];
-  return {set:new Set(fb), fromApi:false};
-}
-
-// UI: add update button
-(function addFestButton(){
-  const area = $('festUpdateArea');
-  const btn = document.createElement('button');
-  btn.className = 'btn bg-amber-500 text-white'; btn.id = 'btnUpdateFest'; btn.innerText = 'Actualizar festivos (API)';
-  const info = document.createElement('span'); info.id='festInfo'; info.style.marginLeft='8px';
-  area.appendChild(btn); area.appendChild(info);
-  btn.addEventListener('click', async ()=>{
-    const year = (new Date()).getFullYear();
-    info.innerText = 'Actualizando...';
-    const res = await fetchFestivosFromAPI(year);
-    if(res) info.innerText = `Festivos ${year} cargados (${res.dates.length})`;
-    else info.innerText = 'No se pudo actualizar; usando fallback/caché';
-  });
-})();
-
-// ------------------------ Grid / UI ------------------------
-const grid = $('grid');
-
-function makeRow(data){
-  const r = document.createElement('div');
-  r.className = 'table-like items-center rowItem';
-  r.innerHTML = `
-    <input class="cell day mono" value="${(data.day||'')}" />
-    <input class="cell horario" value="${(data.horario||'')}" />
-    <input class="cell situacion" value="${(data.situ||'')}" />
-    <input class="cell pluses" value="${(data.pluses||'')}" />
-    <input class="cell centro" value="${(data.centro||'')}" />
-    <input class="cell localidad" value="${(data.localidad||'')}" />
-    <input class="cell horasdia" value="${(data.horas||'')}" />
-  `;
-  r.addEventListener('click', ()=> selectRow(r));
-  r.querySelectorAll('input').forEach(i => i.addEventListener('input', saveCurrentToLocalDebounced));
-  return r;
-}
-
-let selectedRow = null;
-function selectRow(r){ if(selectedRow) selectedRow.style.outline=''; selectedRow = r; r.style.outline='2px solid rgba(34,197,94,0.25)'; }
-
-function addRow(data){ grid.appendChild(makeRow(data||{})); saveCurrentToLocal(); }
-function dupRow(){ if(!selectedRow){ alert('Selecciona una fila.'); return; } const inputs = selectedRow.querySelectorAll('input'); const data = { day:inputs[0].value, horario:inputs[1].value, situ:inputs[2].value, pluses:inputs[3].value, centro:inputs[4].value, localidad:inputs[5].value, horas:inputs[6].value }; addRow(data); }
-function clearGrid(){ if(confirm('Limpiar tabla?')){ grid.innerHTML=''; saveCurrentToLocal(); } }
-
-$('addRow').addEventListener('click', ()=> addRow({day:'',horario:'',situ:'LIBRE',pluses:'',centro:'',localidad:'',horas:0}));
-$('dupRow').addEventListener('click', dupRow);
-$('clearAll').addEventListener('click', clearGrid);
-
-// initial default grid or load current
-(function initialGrid(){
-  const cur = JSON.parse(localStorage.getItem('cuadrante_current')||'null');
-  if(cur && cur.rows){ grid.innerHTML=''; cur.rows.forEach(r=> addRow({day:r[0], horario:r[1], situ:r[2], pluses:r[3], centro:r[4], localidad:r[5], horas:r[6]})); }
-  else { for(let i=1;i<=31;i++) addRow({day:i,horario:'',situ:'LIBRE',pluses:'',centro:'',localidad:'',horas:0}); }
-})();
-
-// ------------------------ Local history storage ------------------------
-function refreshMonthSelector(){
-  const sel = $('mesSelector'); sel.innerHTML = '<option value="">-- seleccionar --</option>';
-  const all = JSON.parse(localStorage.getItem('cuadrante_hist')||'{}');
-  Object.keys(all).sort().forEach(k=>{
-    const o = document.createElement('option'); o.value = k; o.text = `${k} (guardado ${new Date(all[k].savedAt).toLocaleString()})`; sel.appendChild(o);
-  });
-}
-refreshMonthSelector();
-
-function saveMonthToStorage(monthKey, rows){
-  const all = JSON.parse(localStorage.getItem('cuadrante_hist')||'{}');
-  all[monthKey] = {rows, savedAt: new Date().toISOString()};
-  localStorage.setItem('cuadrante_hist', JSON.stringify(all));
-  refreshMonthSelector();
-}
-function loadMonthFromStorage(monthKey){
-  const all = JSON.parse(localStorage.getItem('cuadrante_hist')||'{}');
-  return all[monthKey]||null;
-}
-$('mesSelector').addEventListener('change', ()=>{
-  const key = $('mesSelector').value; if(!key) return;
-  const d = loadMonthFromStorage(key); if(!d) return alert('No encontrado');
-  grid.innerHTML=''; d.rows.forEach(r=> addRow({day:r[0], horario:r[1], situ:r[2], pluses:r[3], centro:r[4], localidad:r[5], horas:r[6]}));
-  saveCurrentToLocal();
-});
-$('btnLoadLast').addEventListener('click', ()=>{
-  const all = JSON.parse(localStorage.getItem('cuadrante_hist')||'{}'); const keys = Object.keys(all).sort(); if(!keys.length) return alert('No hay histórico'); const last = keys[keys.length-1]; $('mesSelector').value = last; $('mesSelector').dispatchEvent(new Event('change'));
-});
-
-// Save current grid (temp)
-function saveCurrentToLocal(){
-  const rows = Array.from(document.querySelectorAll('.rowItem')).map(r=>{ const i=r.querySelectorAll('input'); return [i[0].value,i[1].value,i[2].value,i[3].value,i[4].value,i[5].value,i[6].value]; });
-  localStorage.setItem('cuadrante_current', JSON.stringify({rows, periodo: $('periodo').value, trabajador: $('trabajador').value, cfg:{salarioBase:$('cfg_salarioBase').value}}));
-}
-function saveCurrentToLocalDebounced(){ clearTimeout(window._saveTimer); window._saveTimer = setTimeout(saveCurrentToLocal, 400); }
-setInterval(saveCurrentToLocal, 3000);
-
-// ------------------------ Parsing heuristics ------------------------
-function detectPlusesFromService(text){
-  const n = normalize(text);
-  const pluses = [];
-  if(/\\barma\\b|\\barmad|con arma/.test(n)) pluses.push('ARMADO');
-  if(n.includes('radioscop')) pluses.push('RADIOSCOPIA');
-  if(n.includes('peligro') || n.includes('peligrosidad')) pluses.push('PELIGROSIDAD');
-  if(n.includes('tiro') || n.includes('formacion') || n.includes('formación')) pluses.push('SIN_PLUS');
-  return pluses;
-}
-
-function tryParseLinesFromTextBlock(txt){
-  // Split per blocks using "MES SERVICIO" or by uppercase month names
-  const parts = txt.split(/(?:MES\\s+SERVICIO[:]?|MES[:]?)/i).map(p=>p.trim()).filter(Boolean);
-  const out = {};
-  parts.forEach(part=>{
-    // locate month like 'OCTUBRE 2025' or fallback to periodoDefault
-    const m = part.match(/([A-ZÁÉÍÓÚÑ]{3,}\\s+20\\d{2})/i);
-    let ym = $('periodoDefault').value;
-    if(m){
-      const tokens = m[0].trim().split(/\\s+/);
-      const monthName = tokens[0].toLowerCase();
-      const year = tokens[1];
-      const months = {enero:'01',febrero:'02',marzo:'03',abril:'04',mayo:'05',junio:'06',julio:'07',agosto:'08',septiembre:'09',octubre:'10',noviembre:'11',diciembre:'12'};
-      if(months[monthName]) ym = `${year}-${months[monthName]}`;
-    }
-    if(!out[ym]) out[ym] = {rows:[], errors:[]};
-    // now find lines that begin with optional * and a day number
-    const lines = part.split(/\\r?\\n/).map(l=>l.trim()).filter(Boolean);
-    for(let i=0;i<lines.length;i++){
-      const line = lines[i];
-      const dayMatch = line.match(/^\\*?\\s*(\\d{1,2})\\b/);
-      if(!dayMatch) continue;
-      const day = dayMatch[1];
-      const hasAsterisk = /^\\*/.test(line.trim());
-      // find horario in same line or next lines
-      let horarioMatch = line.match(/(\\d{1,2}[:.]\\d{2}\\s*-\\s*\\d{1,2}[:.]\\d{2})/);
-      let horario = horarioMatch ? horarioMatch[1].replace('.',':') : '';
-      // hours possibly at end of this line or next lines like "12,00"
-      let horasMatch = line.match(/(\\d{1,3}[.,]\\d{1,2}|\\d{1,3})(?=\\s*$)/);
-      let horas = horasMatch ? horasMatch[0].replace(',', '.') : '';
-      // build a mid text removing day, horario, horas
-      let mid = line.replace(/^\\*?\\s*\\d{1,2}\\s*/, '');
-      if(horario) mid = mid.replace(horarioMatch[0], '');
-      if(horas) mid = mid.replace(new RegExp(horas.replace('.','\\\\.') + '\\\\s*$'), '');
-      // try to gather more parts in next lines if they look like SERVICE and CENTRO lines typical in your PDF
-      // If next line looks like long text and current line has horario, treat joined
-      let next = lines[i+1] || '';
-      if(next && !/^[*\\s]*\\d{1,2}\\b/.test(next) && !horario){
-        // maybe horario on next line
-        const nm = next.match(/(\\d{1,2}[:.]\\d{2}\\s*-\\s*\\d{1,2}[:.]\\d{2})/);
-        if(nm){ horario = nm[1].replace('.',':'); lines[i+1] = next.replace(nm[0], ''); }
-      }
-      // split mid by double spaces to approximate service/centro/localidad
-      const partsMid = mid.split(/\\s{2,}/).map(p=>p.trim()).filter(Boolean);
-      const situ = partsMid[0] || '';
-      const centro = partsMid[1] || '';
-      const localidad = partsMid[2] || '';
-      const pluses = detectPlusesFromService(situ);
-      // handle keywords
-      const situNorm = normalize(situ);
-      if(/libre|vacacion|vacaciones|baja|permiso/.test(situNorm)){
-        out[ym].rows.push({day, horario:'', situ, pluses:[], centro, localidad, horas:0, festive: hasAsterisk});
-      } else {
-        if(!horario || !horas){
-          out[ym].errors.push({line, day, reason: !horario ? 'Horario no detectado' : 'Horas no detectadas'});
-        } else {
-          out[ym].rows.push({day, horario, situ, pluses, centro, localidad, horas: Number(horas), festive: hasAsterisk});
+  try{
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+    let lines=[];
+    for(let p=1;p<=pdf.numPages;p++){
+      const page = await pdf.getPage(p);
+      const text = await page.getTextContent();
+      const items = text.items.map(it=>({t:it.str,x:it.transform[4],y:it.transform[5]}));
+      items.sort((a,b)=>(b.y-a.y)||(a.x-b.x));
+      let currentY=null,row=[];
+      for(const it of items){
+        if(currentY===null) currentY=it.y;
+        if(Math.abs(it.y-currentY)<5){ row.push(it); }
+        else{
+          lines.push(row.map(r=>r.t).join(' ').trim());
+          currentY=it.y; row=[it];
         }
       }
+      if(row.length) lines.push(row.map(r=>r.t).join(' ').trim());
     }
-  });
-  return out;
-}
 
-// ------------------------ File processing (PDF + XLSX/CSV) ------------------------
-$('btnFile').addEventListener('click', ()=> $('fileInput').click());
-let selectedFile = null;
-$('fileInput').addEventListener('change', (e)=>{ selectedFile = e.target.files[0]; $('ocrStatus').innerText = `Archivo listo: ${selectedFile.name}`; });
+    let month=null, year=null;
+    for(const l of lines){
+      const lower = l.toLowerCase();
+      for(const m in monthNames){ if(lower.includes(m)) month = monthNames[m]; }
+      const y = l.match(/(20\d{2})/); if(y) year=parseInt(y[1]);
+    }
+    if(month===null) month = new Date().getMonth();
+    if(!year) year = new Date().getFullYear();
 
-async function processFile(file){
-  if(!file) return alert('Selecciona un archivo primero.');
-  const limitMB = Number($('fileLimit').value) || 10;
-  if(file.size > limitMB*1024*1024) return alert('Archivo supera límite de ' + limitMB + ' MB');
-  $('ocrStatus').innerText = 'Procesando...';
+    const stop=lines.findIndex(l=>/TOTAL\s+HORAS|Próxima fecha/i.test(l));
+    if(stop!==-1) lines=lines.slice(0,stop);
 
-  if(file.name.toLowerCase().endsWith('.pdf')){
-    // Try to extract text using pdf.js textContent. If too little, fallback to OCR Tesseract on canvas.
-    const arrayBuffer = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({data: arrayBuffer});
-    const pdf = await loadingTask.promise;
-    let accumulatedText = '';
-    for(let p=1; p<=pdf.numPages; p++){
-      const page = await pdf.getPage(p);
-      // attempt textContent
-      try{
-        const content = await page.getTextContent();
-        const pageText = content.items.map(i => i.str).join(' ');
-        accumulatedText += '\\n' + pageText;
-      }catch(e){
-        // fallback to canvas+OCR below
+    const rows=[], reDia=/^\*?\s*(\d{1,2})\b/, reHor=/^(LIBRE|\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})/i, reNum=/(\d{1,3}[.,]\d{2})/g;
+    for(const l of lines){
+      const m=l.match(reDia); if(!m) continue;
+      const dia=parseInt(m[1]); let rest=l.slice(m[0].length).trim();
+      const h=rest.match(reHor); let horario=h?h[1].toUpperCase():'',horas='0,00';
+      if(h) rest=rest.slice(h[0].length).trim();
+      const nums=[...rest.matchAll(reNum)]; if(nums.length){ horas=nums.at(-1)[1]; rest=rest.slice(0,nums.at(-1).index).trim(); }
+      let servicio=limpiarServicio(rest);
+      rows.push({dia,horario,servicio,horas});
+    }
+
+    if(rows.length===0){status.textContent='No se detectaron filas válidas.';return;}
+
+    tableContainer.innerHTML='';
+    const tmpl=document.getElementById('tableTemplate');
+    const clone=tmpl.content.cloneNode(true);
+    const tbody=clone.getElementById('tableBody');
+
+    const festivos=generateFestiveIntervals(month,year,rows);
+    const diasMes=Math.max(...rows.map(r=>r.dia));
+    const coef=1782/(isLeapYear(year)?335:334);
+    const horasTeoricasMes=coef*diasMes;
+
+    let acumHoras=0;
+    let totH=0, totF=0, totN=0, totR=0, totFExtra=0, totNExtra=0, totRExtra=0;
+    let totVigilanteTeoricas=0, totVigilanteExtras=0, totHorasExtras=0;
+
+    for(const r of rows){
+      let hNum=parseFloat(r.horas.replace(',','.'))||0;
+      let hNormal=0, hExtra=0;
+      if(acumHoras < horasTeoricasMes){
+        if(acumHoras + hNum <= horasTeoricasMes){
+          hNormal = hNum;
+          hExtra = 0;
+        } else {
+          hNormal = horasTeoricasMes - acumHoras;
+          hExtra = hNum - hNormal;
+        }
+      } else {
+        hNormal = 0;
+        hExtra = hNum;
       }
-    }
-    // if accumulatedText seems empty, do OCR via Tesseract rendering canvases
-    const cleanEnough = (accumulatedText.replace(/\\s/g,'').length > 100);
-    if(!cleanEnough){
-      $('ocrStatus').innerText = 'Texto del PDF poco claro: usando OCR (Tesseract). Esto tardará más...';
-      accumulatedText = '';
-      for(let p=1; p<=pdf.numPages; p++){
-        const page = await pdf.getPage(p);
-        const viewport = page.getViewport({scale:2});
-        const canvas = document.createElement('canvas'); canvas.width = viewport.width; canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d');
-        await page.render({canvasContext: ctx, viewport}).promise;
-        $('ocrStatus').innerText = `OCR página ${p}/${pdf.numPages}...`;
-        const { data: { text } } = await Tesseract.recognize(canvas, 'spa', {logger: m => {/*progress*/}});
-        accumulatedText += '\\n' + text;
-        await new Promise(r=>setTimeout(r,80));
+      acumHoras += hNormal;
+
+      let fest=0, noct=0, ra=0, festExtra=0, noctExtra=0, raExtra=0;
+      let vigTeor=0, vigExtra=0;
+      const rng=parseHorario(r.dia,month,year,r.horario);
+      if(rng){
+        for(const f of festivos){
+          const ov = overlap(rng.start,rng.end,f.start,f.end);
+          if(acumHoras - hNormal < horasTeoricasMes){
+            const teor = Math.min(ov, hNormal - fest);
+            fest += teor;
+            const extra = ov - teor;
+            if(extra>0) festExtra += extra;
+          } else {
+            festExtra += ov;
+          }
+        }
+        const nStart=new Date(rng.start.getFullYear(),rng.start.getMonth(),rng.start.getDate(),22,0,0);
+        const nEnd=new Date(nStart.getTime()+8*3600000);
+        const ovN = overlap(rng.start,rng.end,nStart,nEnd);
+        if(acumHoras - hNormal < horasTeoricasMes){
+          const teor = Math.min(ovN, hNormal - noct);
+          noct += teor;
+          const extra = ovN - teor;
+          if(extra>0) noctExtra += extra;
+        } else {
+          noctExtra += ovN;
+        }
       }
+
+      if(r.servicio.toLowerCase().includes('radioscopia básica')){
+        ra = hNormal;
+        raExtra = hExtra;
+      }
+
+      if(r.servicio.toLowerCase().includes('vigilante con arma')){
+        vigTeor = hNormal;
+        vigExtra = hExtra;
+      }
+
+      const diaHExtra = hExtra; // todas las horas extras
+      totHorasExtras += diaHExtra;
+      totH += hNormal;
+      totF += fest;
+      totN += noct;
+      totR += ra;
+      totFExtra += festExtra;
+      totNExtra += noctExtra;
+      totRExtra += raExtra;
+      totVigilanteTeoricas += vigTeor;
+      totVigilanteExtras += vigExtra;
+
+      const tr=document.createElement('tr');
+      tr.className='border-b';
+      tr.innerHTML=`
+        <td class="px-3 py-2">${r.dia}</td>
+        <td class="px-3 py-2">${r.horario}</td>
+        <td class="px-3 py-2 cell-break">${r.servicio}</td>
+        <td class="px-3 py-2 text-right">${format(hNormal)}</td>
+        <td class="px-3 py-2 text-right">${format(fest)}</td>
+        <td class="px-3 py-2 text-right">${format(noct)}</td>
+        <td class="px-3 py-2 text-right">${format(ra)}</td>
+        <td class="px-3 py-2 text-right">${format(festExtra)}</td>
+        <td class="px-3 py-2 text-right">${format(noctExtra)}</td>
+        <td class="px-3 py-2 text-right">${format(raExtra)}</td>
+        <td class="px-3 py-2 text-right">${format(vigTeor)}</td>
+        <td class="px-3 py-2 text-right">${format(vigExtra)}</td>
+        <td class="px-3 py-2 text-right">${format(diaHExtra)}</td>`;
+      tbody.appendChild(tr);
     }
-    $('ocrStatus').innerText = 'Análisis de texto completado. Parseando cuadrantes...';
-    const parsedObj = tryParseLinesFromTextBlock(accumulatedText);
-    // Save parsed months to localStorage historial (merge)
-    const all = JSON.parse(localStorage.getItem('cuadrante_hist')||'{}');
-    const errorAggregate = [];
-    Object.keys(parsedObj).forEach(k=>{
-      const existing = all[k] && Array.isArray(all[k].rows) ? all[k].rows : [];
-      const newRows = parsedObj[k].rows.map(r => [r.day, r.horario, r.situ, (r.pluses||[]).join(';'), r.centro, r.localidad, r.horas]);
-      all[k] = { rows: existing.concat(newRows), savedAt: new Date().toISOString() };
-      if(parsedObj[k].errors && parsedObj[k].errors.length) errorAggregate.push({month:k, errors: parsedObj[k].errors});
-    });
-    localStorage.setItem('cuadrante_hist', JSON.stringify(all));
-    refreshMonthSelector();
-    if(errorAggregate.length){
-      $('errorBox').classList.remove('hidden'); $('errorList').innerHTML = '';
-      errorAggregate.forEach(e=>{
-        const head = document.createElement('div'); head.className='font-semibold'; head.innerText = `Mes ${e.month}`; $('errorList').appendChild(head);
-        e.errors.forEach(err=>{ const d=document.createElement('div'); d.className='text-xs text-red-700'; d.innerText = `Día ${err.day}: ${err.reason} — "${err.line.substring(0,120)}"`; $('errorList').appendChild(d); });
-      });
-    } else { $('errorBox').classList.add('hidden'); $('errorList').innerHTML = ''; }
-    $('ocrStatus').innerText = 'Importación PDF completada. Selecciona el mes en el desplegable.';
-    alert('Importación PDF completada. Selecciona el mes en el desplegable para cargarlo en la tabla.');
-    return;
-  } else {
-    // XLSX or CSV
-    const reader = new FileReader();
-    reader.onload = (e)=>{
-      const data = e.target.result;
-      const wb = XLSX.read(data, {type:'binary'});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const arr = XLSX.utils.sheet_to_json(ws, {header:1});
-      const start = 1;
-      const toSave = {};
-      arr.slice(start).forEach(r=>{
-        const day = r[0]; const horario = r[1]||''; const situ = r[2]||''; const centro = r[3]||''; const loc = r[4]||''; const hrs = r[5]||0;
-        const k = $('periodoDefault').value;
-        toSave[k] = toSave[k] || {rows:[]}; toSave[k].rows.push([day, horario, situ, detectPlusesFromService(situ).join(';'), centro, loc, hrs]);
-      });
-      const all = JSON.parse(localStorage.getItem('cuadrante_hist')||'{}');
-      Object.keys(toSave).forEach(k=>{ const existing = all[k] && Array.isArray(all[k].rows) ? all[k].rows : []; all[k] = {rows: existing.concat(toSave[k].rows), savedAt: new Date().toISOString()}; });
-      localStorage.setItem('cuadrante_hist', JSON.stringify(all));
-      refreshMonthSelector();
-      alert('Importación XLSX/CSV completa y guardada en historial.');
-    };
-    reader.readAsBinaryString(file);
+
+    tableContainer.appendChild(clone);
+    document.getElementById('totalHoras').textContent=format(totH);
+    document.getElementById('totalFestivo').textContent=format(totF);
+    document.getElementById('totalNocturno').textContent=format(totN);
+    document.getElementById('totalRadioscopia').textContent=format(totR);
+    document.getElementById('totalExtrasFestivo').textContent=format(totFExtra);
+    document.getElementById('totalExtrasNocturno').textContent=format(totNExtra);
+    document.getElementById('totalExtrasRadioscopia').textContent=format(totRExtra);
+    document.getElementById('totalVigilanteTeoricas').textContent=format(totVigilanteTeoricas);
+    document.getElementById('totalVigilanteExtras').textContent=format(totVigilanteExtras);
+    document.getElementById('totalHorasExtras').textContent=format(totHorasExtras);
+
+    status.textContent='Procesado correctamente.';
+  } catch(e){
+    console.error(e);
+    status.textContent='Error al procesar PDF.';
   }
-}
-
-$('btnImportNow').addEventListener('click', ()=> processFile(selectedFile));
-
-// ------------------------ Calculation (usa getFestivos) ------------------------
-function isWeekend(date){ const d = date.getDay(); return d===0||d===6; }
-
-async function computeForMonth(){
-  const cfg = { salarioBase: Number($('cfg_salarioBase').value||0), rad_h: Number($('cfg_rad_h').value||0), horasEstandar: Number($('cfg_horasEstandar').value||173.3333) };
-  const includeWeekend = $('festFind').value==='si';
-  const periodo = $('periodo').value; const [yr,mo] = periodo.split('-').map(Number);
-  const festObj = await getFestivos(yr); const festMap = festObj.set;
-
-  // accumulate
-  const rows = Array.from(document.querySelectorAll('.rowItem'));
-  const totals = {horasNormales:0, horasNocturnas:0, horasFestivas:0, horasExtra:0, impHorasExtra:0, impRad:0, impPeligroExtra:0, radHoras:0, peligroHoras:0};
-
-  rows.forEach((r, idx) => {
-    const i = r.querySelectorAll('input');
-    const day = Number(i[0].value) || (idx+1);
-    const horario = safeText(i[1].value);
-    const situ = safeText(i[2].value);
-    const plusesTxt = safeText(i[3].value);
-    const horasManual = Number(i[6].value || 0);
-
-    if(!horario){
-      if(horasManual>0) totals.horasNormales += horasManual;
-      return;
-    }
-    // parse ranges
-    const ranges = horario.split(/[;,\/]+/).map(p=>p.trim()).filter(Boolean).map(p=>{ const [a,b]=p.split('-').map(x=>x.trim()); return {start:a,end:b}; });
-    const dateStart = new Date(yr, mo-1, day);
-
-    ranges.forEach(rg=>{
-      if(!rg.start || !rg.end) return;
-      const startMin = hhmmToMinutes(rg.start); const endMin = hhmmToMinutes(rg.end);
-      const startDate = new Date(dateStart); startDate.setHours(Math.floor(startMin/60), startMin%60,0,0);
-      const finalDate = new Date(dateStart); finalDate.setHours(Math.floor(endMin/60), endMin%60,0,0); if(endMin <= startMin) finalDate.setDate(finalDate.getDate()+1);
-      const step = 15; let ptr = new Date(startDate);
-      while(ptr < finalDate){
-        const blockEnd = new Date(ptr); blockEnd.setMinutes(blockEnd.getMinutes()+step); if(blockEnd>finalDate) blockEnd.setTime(finalDate.getTime());
-        const countsTo = dateStart;
-        const h = ptr.getHours(); const isNoct = (h>=22) || (h<6);
-        const iso = countsTo.toISOString().slice(0,10);
-        const isFest = (includeWeekend && isWeekend(countsTo)) || festMap.has(iso);
-        const minutes = (blockEnd - ptr)/60000;
-        if(isFest) totals.horasFestivas += minutes/60;
-        else if(isNoct) totals.horasNocturnas += minutes/60;
-        else totals.horasNormales += minutes/60;
-        ptr.setTime(blockEnd.getTime());
-      }
-      // plus counting by situ and editable pluses
-      const minutesRange = ((finalDate - startDate)/60000);
-      if(/radioscop/i.test(situ) || /radioscop/i.test(plusesTxt)) totals.radHoras += minutesRange/60;
-      if(/peligro|arm/i.test(situ) || /peligro|arm/i.test(plusesTxt)) totals.peligroHoras += minutesRange/60;
-    });
-    // if pluses indicate radioscop and no horario, maybe count horasManual
-    if(/radioscop/i.test(plusesTxt) && !horario) totals.radHoras += horasManual;
-    if(/peligro|arm/i.test(plusesTxt) && !horario) totals.peligroHoras += horasManual;
-  });
-
-  totals.horasExtra = Math.max(0, (totals.horasNormales + totals.horasNocturnas + totals.horasFestivas) - cfg.horasEstandar);
-  const valorHora = cfg.salarioBase / cfg.horasEstandar; const recExtra = 0.5;
-  totals.impHorasExtra = totals.horasExtra * valorHora * (1 + recExtra);
-  totals.impRad = totals.radHoras * cfg.rad_h;
-  totals.impPeligroExtra = totals.peligroHoras * (cfg.salarioBase / cfg.horasEstandar);
-  const bruto = cfg.salarioBase + totals.impRad + totals.impPeligroExtra + totals.impHorasExtra;
-
-  // cotizaciones (trabajador) - valores de ejemplo del convenio/ejemplo
-  const porcCont = 4.70/100, porcDfp = 1.65/100, porcMei = 0.13/100, porcDes = 1.55/100, porcFp = 0.10/100;
-  const cotCont = bruto*porcCont, cotDfp = bruto*porcDfp, cotMei = bruto*porcMei, cotDes = bruto*porcDes, cotFp = bruto*porcFp;
-  const brutoAnual = bruto*12;
-  let irpf = 0.14;
-  if(brutoAnual < 12000) irpf = 0.02; else if(brutoAnual < 20000) irpf = 0.12; else if(brutoAnual < 35000) irpf = 0.15; else if(brutoAnual < 60000) irpf = 0.20; else irpf = 0.24;
-  const retIRPF = bruto * irpf;
-  const ded = cotCont + cotDfp + cotMei + cotDes + cotFp + retIRPF;
-  const neto = bruto - ded;
-  const empCont = bruto*0.2360, empMei = bruto*0.0067, desempleo = bruto*0.055, fp = bruto*0.006, fogasa = bruto*0.002;
-  const costeEmpresa = empCont + empMei + desempleo + fp + fogasa + bruto;
-
-  window._calc = { totals, bruto, cotCont, cotDfp, cotMei, cotDes, cotFp, retIRPF, ded, neto, costeEmpresa };
-
-  // render summary compact and offer to save historic
-  const out = [];
-  out.push(`<div><strong>Horas totales:</strong> ${(totals.horasNormales+totals.horasNocturnas+totals.horasFestivas).toFixed(2)} h</div>`);
-  out.push(`<div>Normales: ${totals.horasNormales.toFixed(2)} — Nocturnas: ${totals.horasNocturnas.toFixed(2)} — Festivas: ${totals.horasFestivas.toFixed(2)}</div>`);
-  out.push(`<div class="mt-2"><strong>Bruto:</strong> ${bruto.toFixed(2)} €</div>`);
-  out.push(`<div>IRPF estimado: -${retIRPF.toFixed(2)} €</div>`);
-  out.push(`<div>Cotizaciones (trabajador): -${(cotCont+cotDfp+cotMei+cotDes+cotFp).toFixed(2)} €</div>`);
-  out.push(`<div class="mt-2"><strong>Neto:</strong> ${neto.toFixed(2)} €</div>`);
-  out.push(`<div class="mt-2"><strong>Coste empresa aprox.:</strong> ${costeEmpresa.toFixed(2)} €</div>`);
-  out.push(`<div class="mt-3"><button id="saveHistBtn" class="btn bg-slate-200">Guardar cuadrante en historial</button></div>`);
-
-  $('output').innerHTML = out.join('\\n'); $('resumen').classList.remove('hidden'); window.scrollTo(0, $('resumen').offsetTop-10);
-
-  setTimeout(()=>{ const b = document.getElementById('saveHistBtn'); if(b) b.addEventListener('click', ()=>{
-    const rows = Array.from(document.querySelectorAll('.rowItem')).map(r=> { const i = r.querySelectorAll('input'); return [i[0].value,i[1].value,i[2].value,i[3].value,i[4].value,i[5].value,i[6].value]; });
-    const key = $('periodo').value; if(!key) return alert('Indica periodo'); saveMonthToStorage(key, rows); alert('Guardado en historial como ' + key);
-  }); }, 80);
-}
-
-$('calcular').addEventListener('click', computeForMonth);
-
-// ------------------------ Export PDF / XLSX ------------------------
-$('exportPdf').addEventListener('click', ()=>{
-  if(!window._calc) return alert('Primero calcula.');
-  const { jsPDF } = window.jspdf; const doc = new jsPDF({unit:'mm',format:'a4'});
-  doc.setFontSize(12); doc.text('Nómina estimada',14,16);
-  doc.setFontSize(9); doc.text(`Trabajador: ${$('trabajador').value} — Periodo: ${$('periodo').value}`,14,24);
-  let y=34; const lines = $('output').innerText.split('\\n');
-  lines.forEach(l=>{ if(y>270){ doc.addPage(); y=20; } doc.text(l,14,y); y+=6; });
-  doc.save(`nomina_${$('trabajador').value.replace(/\\s+/g,'_')}_${$('periodo').value}.pdf`);
 });
-
-$('exportXlsx').addEventListener('click', ()=>{
-  const rows = Array.from(document.querySelectorAll('.rowItem')).map(r=>{ const i=r.querySelectorAll('input'); return [i[0].value,i[1].value,i[2].value,i[3].value,i[4].value,i[5].value,i[6].value]; });
-  const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet([['Día','Horario','Servicio','Pluses','Centro','Localidad','H.dia'], ...rows]); XLSX.utils.book_append_sheet(wb, ws, 'Cuadrante');
-  if(window._calc){ const c = window._calc; const summary = [['Concepto','Importe'], ['Horas totales', (c.totals.horasNormales + c.totals.horasNocturnas + c.totals.horasFestivas).toFixed(2)], ['Bruto', c.bruto.toFixed(2)], ['Neto', c.neto.toFixed(2)], ['Coste empresa', c.costeEmpresa.toFixed(2)]]; const ws2 = XLSX.utils.aoa_to_sheet(summary); XLSX.utils.book_append_sheet(wb, ws2, 'Resumen'); }
-  XLSX.writeFile(wb, `cuadrante_${$('periodo').value}.xlsx`);
-});
-
-// ------------------------ Init ------------------------
-refreshMonthSelector();
-$('btnFile').addEventListener('click', ()=> $('fileInput').click());
-
 </script>
 </body>
 </html>
