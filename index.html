@@ -9,11 +9,116 @@
   <style>
     .cell-break { white-space: pre-wrap; word-break: break-word; }
     .small { font-size: 0.9rem; color: #4b5563; }
+
+    /* Estilos para el toggle de desglose */
+    #desgloseWrapper { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; }
+    #toggleDesglose {
+      padding: .4rem .6rem;
+      border-radius: .375rem;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      color: #111827;
+      cursor: pointer;
+      transition: background-color .15s ease, border-color .15s ease;
+    }
+    #toggleDesglose[disabled]{
+      opacity: .6;
+      cursor: not-allowed;
+      background: #f9fafb;
+    }
+    #toggleDesglose:hover:not([disabled]){ border-color:#9ca3af; background:#f3f4f6; }
+
+    /* Subtítulo mes detectado */
+    #detectedMonth { font-size: 1rem; color: #374151; margin-bottom: 1rem; }
+
+    /* Resumen de totales (lista) */
+    #summaryList { margin-bottom: .75rem; }
+    #summaryList ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .5rem; }
+    #summaryList li {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      min-width: 160px;
+      max-width: 100%;
+      gap: .5rem;
+      padding: .45rem .6rem;
+      border-radius: .375rem;
+      background: #f8fafc;
+      border: 1px solid #e6edf3;
+      color: #0f172a;
+      font-size: .95rem;
+    }
+    #summaryList .label { color:#374151; margin-right:.5rem; }
+    #summaryList .value { font-weight:600; color:#111827; margin-left:auto; }
+
+    /* Tabla: cuando tenga la clase .collapsed ocultamos las columnas detalladas (solo en thead y tbody) */
+    /* Columnas a ocultar en colapsado: 5..12 (Festivo .. Vigilante extras) */
+    #tableContainer table.collapsed thead th:nth-child(5),
+    #tableContainer table.collapsed thead th:nth-child(6),
+    #tableContainer table.collapsed thead th:nth-child(7),
+    #tableContainer table.collapsed thead th:nth-child(8),
+    #tableContainer table.collapsed thead th:nth-child(9),
+    #tableContainer table.collapsed thead th:nth-child(10),
+    #tableContainer table.collapsed thead th:nth-child(11),
+    #tableContainer table.collapsed thead th:nth-child(12),
+    #tableContainer table.collapsed tbody td:nth-child(5),
+    #tableContainer table.collapsed tbody td:nth-child(6),
+    #tableContainer table.collapsed tbody td:nth-child(7),
+    #tableContainer table.collapsed tbody td:nth-child(8),
+    #tableContainer table.collapsed tbody td:nth-child(9),
+    #tableContainer table.collapsed tbody td:nth-child(10),
+    #tableContainer table.collapsed tbody td:nth-child(11),
+    #tableContainer table.collapsed tbody td:nth-child(12) {
+      display: none;
+    }
+
+    /* Transición visual simple al cambiar el estado (fade) para filas completas */
+    #tableContainer table tbody tr > td {
+      transition: opacity .18s ease;
+    }
+
+    /* Cuando cambiamos el estado, hacemos un ligero cambio de opacidad para dar sensación de animación */
+    #tableContainer table.collapsing tbody tr > td { opacity: .6; }
+
+    /* Resaltado de días:
+       - festivos y domingos -> rojo pastel
+       - sábados -> verde pastel
+    */
+    .day-holiday {
+      background-color: #fee2e2; /* rojo pastel (bg-red-100) */
+      border-radius: 0.375rem;
+      padding-left: .5rem;
+      padding-right: .5rem;
+      display: inline-block;
+    }
+    .day-sat {
+      background-color: #ecfdf5; /* verde pastel (bg-green-100) */
+      border-radius: 0.375rem;
+      padding-left: .5rem;
+      padding-right: .5rem;
+      display: inline-block;
+    }
+
+    /* Asegurar contraste en texto dentro de las celdas (si se necesita) */
+    td .day-holiday, td .day-sat { color: #0f172a; font-weight:600; }
+
+    /* Mantener celdas con padding normal; usamos un wrapper dentro de td para aplicar background red/green */
+    .day-wrapper { display:inline-flex; align-items:center; justify-content:center; min-width:2rem; padding:0.125rem 0.4rem; border-radius:0.375rem; }
+
+    /* Estilos para el bloque de fecha de alta y resultados */
+    #hireBlock { margin-top: .75rem; }
+    #hireBlock label { font-weight: 600; font-size: .9rem; color:#374151; display:block; margin-bottom:.25rem; }
+    #hireBlock .controls { display:flex; gap:.5rem; align-items:center; }
+    #hireInfo { margin-top:.5rem; background:#ffffff; border:1px solid #e5e7eb; padding:.5rem .75rem; border-radius:.375rem; color:#111827; font-size:.95rem; }
+    #hireError { color:#b91c1c; font-size:.9rem; margin-top:.25rem; display:none; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen flex items-start justify-center p-6">
   <div class="w-full max-w-7xl bg-white shadow-md rounded-lg p-6">
-    <h1 class="text-2xl font-semibold mb-4">Extractor de cuadrante + horas extras detalladas</h1>
+    <h1 class="text-2xl font-semibold mb-2">Extractor de cuadrante + horas extras detalladas</h1>
+
+    <!-- Subtítulo con mes detectado -->
+    <div id="detectedMonth" role="heading" aria-level="2">Mes: Mes no detectado</div>
 
     <div class="mb-3 flex items-center gap-3">
       <label class="w-full">
@@ -36,9 +141,34 @@
         <button id="saveHolidays" class="px-3 py-1 bg-blue-600 text-white rounded">Guardar festivos</button>
         <button id="resetHolidays" class="px-3 py-1 border rounded">Restablecer por defecto</button>
       </div>
+
+      <!-- NUEVO: Fecha de alta del trabajador (junto al área de festivos) -->
+      <div id="hireBlock">
+        <label for="hireDate">Fecha de alta en la empresa</label>
+        <div class="controls">
+          <input id="hireDate" type="date" class="border rounded px-3 py-1" />
+          <button id="clearHire" class="px-3 py-1 border rounded text-sm">Borrar</button>
+        </div>
+        <div id="hireError" role="alert" aria-live="assertive"></div>
+        <div id="hireInfo" aria-live="polite" style="display:none">
+          <div id="yearsWorked">Años trabajados: —</div>
+          <div id="trienios">Trienios: —</div>
+          <div id="quinquenios">Quinquenios: —</div>
+        </div>
+      </div>
+
     </div>
 
     <div id="extras" class="mb-2 text-sm font-medium"></div>
+
+    <!-- Botón de Desglose colocado encima de la tabla -->
+    <div id="desgloseWrapper" aria-hidden="false">
+      <button id="toggleDesglose" aria-pressed="false" aria-controls="resultTable" disabled>Desglose de Horas</button>
+      <div id="desgloseHelper" class="text-sm text-gray-500">Mostrar/ocultar columnas detalladas</div>
+    </div>
+
+    <!-- Resumen de totales positivos (aparece siempre tras procesar el PDF si hay valores positivos) -->
+    <div id="summaryList" aria-live="polite" class="mb-3" style="display:none"></div>
 
     <div id="tableContainer" class="overflow-x-auto"></div>
 
@@ -93,9 +223,36 @@ const holidaysInput = document.getElementById('holidaysInput');
 const saveHolidaysBtn = document.getElementById('saveHolidays');
 const resetHolidaysBtn = document.getElementById('resetHolidays');
 
+const summaryListEl = document.getElementById('summaryList');
+const toggleBtn = document.getElementById('toggleDesglose');
+const detectedMonthEl = document.getElementById('detectedMonth');
+
+// NUEVO elementos de fecha de alta
+const hireDateInput = document.getElementById('hireDate');
+const hireInfoEl = document.getElementById('hireInfo');
+const hireErrorEl = document.getElementById('hireError');
+const yearsWorkedEl = document.getElementById('yearsWorked');
+const trieniosEl = document.getElementById('trienios');
+const quinqueniosEl = document.getElementById('quinquenios');
+const clearHireBtn = document.getElementById('clearHire');
+
 const defaultHolidays = ['01-01','06-01','01-05','15-08','12-10','01-11','06-12','08-12','25-12'];
 let holidayList = [...defaultHolidays];
 holidaysInput.value = holidayList.join(',');
+
+// Cargar fecha de alta guardada (si existe)
+const HIRE_STORAGE_KEY = 'hireDate';
+(function loadHireFromStorage(){
+  try {
+    const v = localStorage.getItem(HIRE_STORAGE_KEY);
+    if(v){
+      hireDateInput.value = v;
+      computeAndShowHire(v);
+    }
+  } catch(e) {
+    console.warn('No se pudo leer hireDate de localStorage', e);
+  }
+})();
 
 saveHolidaysBtn.addEventListener('click', () => {
   holidayList = holidaysInput.value.split(',').map(s => s.trim()).filter(Boolean);
@@ -107,10 +264,98 @@ resetHolidaysBtn.addEventListener('click', () => {
   status.textContent = 'Festivos restablecidos.';
 });
 
+clearHireBtn.addEventListener('click', () => {
+  hireDateInput.value = '';
+  hireInfoEl.style.display = 'none';
+  hireErrorEl.style.display = 'none';
+  try { localStorage.removeItem(HIRE_STORAGE_KEY); } catch(e){}
+});
+
+// cuando cambia la fecha de alta recalculamos y guardamos
+hireDateInput.addEventListener('change', (ev) => {
+  const v = ev.target.value;
+  if(!v){ hireInfoEl.style.display = 'none'; hireErrorEl.style.display = 'none'; try{ localStorage.removeItem(HIRE_STORAGE_KEY);}catch(e){}; return; }
+  // validación: no futura
+  const d = new Date(v + 'T12:00:00'); // mediodía para evitar problemas de TZ
+  const today = new Date();
+  if(d > today){
+    hireErrorEl.textContent = 'La fecha de alta no puede ser futura.';
+    hireErrorEl.style.display = 'block';
+    hireInfoEl.style.display = 'none';
+    return;
+  } else {
+    hireErrorEl.style.display = 'none';
+  }
+  try { localStorage.setItem(HIRE_STORAGE_KEY, v); } catch(e) { console.warn('No se pudo guardar hireDate',e); }
+  computeAndShowHire(v);
+});
+
+// Calcula años completos entre fechaA (Date/ISO) y fechaB (Date) — equivalente a DATEDIF(...,"y")
+function diffYearsCompletos(fechaA, fechaB){
+  const a = (fechaA instanceof Date) ? fechaA : new Date(fechaA);
+  const b = (fechaB instanceof Date) ? fechaB : new Date(fechaB);
+  let years = b.getFullYear() - a.getFullYear();
+  const mB = b.getMonth(), dB = b.getDate();
+  const mA = a.getMonth(), dA = a.getDate();
+  if(mB < mA || (mB === mA && dB < dA)) years--;
+  return years >= 0 ? years : 0;
+}
+
+// Mostrar en UI los cálculos de antigüedad/trienios/quinquenios
+function computeAndShowHire(isoDateString){
+  if(!isoDateString) {
+    hireInfoEl.style.display = 'none';
+    return;
+  }
+  const hireDate = new Date(isoDateString + 'T12:00:00'); // mediodía para evitar TZ issues
+  const today = new Date();
+
+  // Años trabajados (DATEDIF A1:TODAY(),"y")
+  const yearsWorked = diffYearsCompletos(hireDate, today);
+
+  // Trienios: si fecha de alta > 1996-06-08 -> 0, else INT(years_between(alta, 1996-06-08) / 3)
+  const cutoff = new Date(1996, 5, 8, 12, 0, 0); // 1996-06-08, mediodía
+  let trienios = 0;
+  if(hireDate <= cutoff){
+    const yearsUntilCutoff = diffYearsCompletos(hireDate, cutoff);
+    trienios = Math.floor(yearsUntilCutoff / 3);
+  } else {
+    trienios = 0;
+  }
+
+  // Quinquenios: INT(DATEDIF(A1;TODAY();"y") / 5)
+  const quinquenios = Math.floor(yearsWorked / 5);
+
+  // Actualizar DOM
+  yearsWorkedEl.textContent = `Años trabajados: ${yearsWorked}`;
+  trieniosEl.textContent = `Trienios: ${trienios}`;
+  quinqueniosEl.textContent = `Quinquenios: ${quinquenios}`;
+  hireInfoEl.style.display = 'block';
+  hireErrorEl.style.display = 'none';
+}
+
+// Si el campo tiene ya un valor al inicio, lo mostramos (cargado antes desde localStorage)
+if(hireDateInput.value){
+  // validate not futuristic
+  try {
+    const d = new Date(hireDateInput.value + 'T12:00:00');
+    if(d > new Date()){
+      hireErrorEl.textContent = 'La fecha de alta guardada es futura. Edítala.';
+      hireErrorEl.style.display = 'block';
+      hireInfoEl.style.display = 'none';
+    } else {
+      computeAndShowHire(hireDateInput.value);
+    }
+  } catch(e){}
+}
+
 const monthNames = {
   'enero':0,'febrero':1,'marzo':2,'abril':3,'mayo':4,'junio':5,
   'julio':6,'agosto':7,'septiembre':8,'setiembre':8,'octubre':9,'noviembre':10,'diciembre':11
 };
+
+// nombres para mostrar (capitalizados en español)
+const monthNamesDisplay = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 function isLeapYear(y){ return (y%4===0 && y%100!==0) || (y%400===0); }
 
@@ -143,8 +388,14 @@ function limpiarServicio(text) {
   return text || '—';
 }
 
-function generateFestiveIntervals(month, year, rows){
+// Nuevo: genera intervalos festivos que incluyen:
+//  - los días especificados en holidayList (cada uno 00:00 -> siguiente 00:00)
+//  - todos los fines de semana del mes detectado (sábado 00:00 -> lunes 00:00)
+// Luego normaliza (merge) los intervalos para evitar solapes / duplicados
+function generateFestiveIntervals(month, year){
   const intervals = [];
+
+  // festivos de la lista (DD-MM)
   for(const e of holidayList){
     const [d,m] = e.split('-').map(Number);
     if(!d||!m) continue;
@@ -152,7 +403,41 @@ function generateFestiveIntervals(month, year, rows){
     const end = new Date(year, m-1, d+1, 0,0,0);
     intervals.push({start, end});
   }
-  return intervals;
+
+  // fines de semana del mes detectado: por cada día del mes, si es sábado añadimos [sáb 00:00, lun 00:00)
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  for(let d=1; d<=daysInMonth; d++){
+    // crear a mediodía para que getDay no falle por zona horaria/DST
+    const dtNoon = new Date(year, month, d, 12, 0, 0);
+    if(dtNoon.getDay() === 6){ // sábado
+      const start = new Date(year, month, d, 0,0,0);
+      const end = new Date(year, month, d+2, 0,0,0); // sábado 00:00 -> lunes 00:00 (incluye domingo)
+      intervals.push({start, end});
+    }
+  }
+
+  if(intervals.length === 0) return [];
+
+  // merge intervals
+  intervals.sort((a,b) => a.start - b.start);
+  const merged = [{ start: new Date(intervals[0].start), end: new Date(intervals[0].end) }];
+  for(let i=1;i<intervals.length;i++){
+    const cur = intervals[i];
+    const last = merged[merged.length-1];
+    if(cur.start <= last.end){ // solapan o son contiguos
+      if(cur.end > last.end) last.end = new Date(cur.end);
+    } else {
+      merged.push({ start: new Date(cur.start), end: new Date(cur.end) });
+    }
+  }
+  return merged;
+}
+
+// Helper para comprobar si un día (día, mesIndex) está en holidayList (formato DD-MM)
+function pad2(n){ return String(n).padStart(2,'0'); }
+function isHolidayDay(day, monthIndex){
+  const key = `${pad2(day)}-${pad2(monthIndex+1)}`;
+  return holidayList.includes(key);
 }
 
 fileInput.addEventListener('change', async ev=>{
@@ -161,6 +446,9 @@ fileInput.addEventListener('change', async ev=>{
   fileNameEl.textContent = file.name;
   status.textContent = 'Leyendo PDF...';
   extrasEl.textContent = '';
+  // hide summary until recomputed
+  summaryListEl.style.display = 'none';
+  summaryListEl.innerHTML = '';
 
   try{
     const buf = await file.arrayBuffer();
@@ -183,14 +471,32 @@ fileInput.addEventListener('change', async ev=>{
       if(row.length) lines.push(row.map(r=>r.t).join(' ').trim());
     }
 
+    // Detectar mes y año en el PDF
     let month=null, year=null;
+    let monthDetected=false, yearDetected=false;
     for(const l of lines){
       const lower = l.toLowerCase();
-      for(const m in monthNames){ if(lower.includes(m)) month = monthNames[m]; }
-      const y = l.match(/(20\d{2})/); if(y) year=parseInt(y[1]);
+      for(const m in monthNames){
+        if(lower.includes(m)){
+          month = monthNames[m];
+          monthDetected = true;
+        }
+      }
+      const y = l.match(/(20\d{2})/); if(y){ year=parseInt(y[1]); yearDetected=true; }
     }
+    // fallback al mes/año actual si no detectados, pero mantengo flags para presentar "Mes no detectado"
     if(month===null) month = new Date().getMonth();
     if(!year) year = new Date().getFullYear();
+
+    // actualizar subtítulo y título del documento según lo detectado (o fallback "Mes no detectado")
+    if(monthDetected && yearDetected){
+      detectedMonthEl.textContent = `Mes: ${monthNamesDisplay[month]} de ${year}`;
+      // actualizar título de la pestaña
+      document.title = `Extractor — ${monthNamesDisplay[month]} de ${year}`;
+    } else {
+      detectedMonthEl.textContent = 'Mes: Mes no detectado';
+      document.title = 'Extractor de cuadrante + horas extras detalladas — Mes no detectado';
+    }
 
     const stop=lines.findIndex(l=>/TOTAL\s+HORAS|Próxima fecha/i.test(l));
     if(stop!==-1) lines=lines.slice(0,stop);
@@ -211,9 +517,12 @@ fileInput.addEventListener('change', async ev=>{
     tableContainer.innerHTML='';
     const tmpl=document.getElementById('tableTemplate');
     const clone=tmpl.content.cloneNode(true);
-    const tbody=clone.getElementById('tableBody');
+    // Use querySelector in fragment to get tbody reliably
+    const tbody=clone.querySelector('#tableBody');
 
-    const festivos=generateFestiveIntervals(month,year,rows);
+    // generamos los intervalos festivos (incluye fines de semana y festivos de holidayList), ya normalizados
+    const festivos = generateFestiveIntervals(month, year);
+
     const diasMes=Math.max(...rows.map(r=>r.dia));
     const coef=1782/(isLeapYear(year)?335:334);
     const horasTeoricasMes=coef*diasMes;
@@ -243,6 +552,7 @@ fileInput.addEventListener('change', async ev=>{
       let vigTeor=0, vigExtra=0;
       const rng=parseHorario(r.dia,month,year,r.horario);
       if(rng){
+        // calcular solape con cada intervalo festivo (ya incluye fines de semana)
         for(const f of festivos){
           const ov = overlap(rng.start,rng.end,f.start,f.end);
           if(acumHoras - hNormal < horasTeoricasMes){
@@ -254,6 +564,8 @@ fileInput.addEventListener('change', async ev=>{
             festExtra += ov;
           }
         }
+
+        // cálculo nocturna (22:00-06:00) mantiene comportamiento previo
         const nStart=new Date(rng.start.getFullYear(),rng.start.getMonth(),rng.start.getDate(),22,0,0);
         const nEnd=new Date(nStart.getTime()+8*3600000);
         const ovN = overlap(rng.start,rng.end,nStart,nEnd);
@@ -289,10 +601,35 @@ fileInput.addEventListener('change', async ev=>{
       totVigilanteTeoricas += vigTeor;
       totVigilanteExtras += vigExtra;
 
+      // --- Resaltado de la celda Día según fecha ---
+      // Prioridad: holidayList (festivo) -> domingo -> sábado
+      const dateForDay = new Date(year, month, r.dia, 12, 0, 0); // mediodía para evitar TZ issues
+      const dow = dateForDay.getDay(); // 0 domingo, 6 sabado
+      let dayClass = '';
+      let dayTitle = '';
+      const key = `${pad2(r.dia)}-${pad2(month+1)}`;
+      const isHol = isHolidayDay(r.dia, month);
+      if (isHol) {
+        dayClass = 'day-holiday';
+        dayTitle = `Festivo (${key})`;
+      } else if (dow === 0) {
+        dayClass = 'day-holiday';
+        dayTitle = 'Domingo';
+      } else if (dow === 6) {
+        dayClass = 'day-sat';
+        dayTitle = 'Sábado';
+      }
+
       const tr=document.createElement('tr');
       tr.className='border-b';
+
+      // Build first TD (Día) with wrapper to apply background only on the number
+      const dayTd = `<td class="px-3 py-2" title="${dayTitle}" aria-label="${dayTitle}">
+                       <span class="day-wrapper ${dayClass}">${r.dia}</span>
+                     </td>`;
+
       tr.innerHTML=`
-        <td class="px-3 py-2">${r.dia}</td>
+        ${dayTd}
         <td class="px-3 py-2">${r.horario}</td>
         <td class="px-3 py-2 cell-break">${r.servicio}</td>
         <td class="px-3 py-2 text-right">${format(hNormal)}</td>
@@ -309,22 +646,116 @@ fileInput.addEventListener('change', async ev=>{
     }
 
     tableContainer.appendChild(clone);
-    document.getElementById('totalHoras').textContent=format(totH);
-    document.getElementById('totalFestivo').textContent=format(totF);
-    document.getElementById('totalNocturno').textContent=format(totN);
-    document.getElementById('totalRadioscopia').textContent=format(totR);
-    document.getElementById('totalExtrasFestivo').textContent=format(totFExtra);
-    document.getElementById('totalExtrasNocturno').textContent=format(totNExtra);
-    document.getElementById('totalExtrasRadioscopia').textContent=format(totRExtra);
-    document.getElementById('totalVigilanteTeoricas').textContent=format(totVigilanteTeoricas);
-    document.getElementById('totalVigilanteExtras').textContent=format(totVigilanteExtras);
-    document.getElementById('totalHorasExtras').textContent=format(totHorasExtras);
+
+    // ---- Aquí: construir resumen de totales positivos (umbral > 0.005)
+    const THRESHOLD = 0.005;
+    // H. DIA mostrado en lista debe sumar H. Extras también
+    const totalHDiaConExtras = totH + totHorasExtras;
+
+    // Mapa en orden natural de columnas en la tabla
+    const totalsOrdered = [
+      { key: 'H. DIA', value: totalHDiaConExtras, id: 'totalHoras' }, // mostrado con extras añadidos
+      { key: 'Festivo (h)', value: totF, id: 'totalFestivo' },
+      { key: 'Nocturna (h)', value: totN, id: 'totalNocturno' },
+      { key: 'Ra. Básica (h)', value: totR, id: 'totalRadioscopia' },
+      { key: 'Extras Festivo', value: totFExtra, id: 'totalExtrasFestivo' },
+      { key: 'Extras Nocturna', value: totNExtra, id: 'totalExtrasNocturno' },
+      { key: 'Extras Ra. Básica', value: totRExtra, id: 'totalExtrasRadioscopia' },
+      { key: 'Vigilante con arma (h teóricas)', value: totVigilanteTeoricas, id: 'totalVigilanteTeoricas' },
+      { key: 'Vigilante con arma (h extras)', value: totVigilanteExtras, id: 'totalVigilanteExtras' },
+      { key: 'H. Extras', value: totHorasExtras, id: 'totalHorasExtras' }
+    ];
+
+    // Generar lista solo con valores >= THRESHOLD, en orden natural
+    const positives = totalsOrdered.filter(t => (t.value || 0) >= THRESHOLD);
+
+    if (positives.length > 0) {
+      const ul = document.createElement('ul');
+      for (const t of positives) {
+        const li = document.createElement('li');
+        const spanLabel = document.createElement('span');
+        spanLabel.className = 'label';
+        spanLabel.textContent = t.key + ':';
+        const spanValue = document.createElement('span');
+        spanValue.className = 'value';
+        spanValue.textContent = `${format(t.value)} h`;
+        li.appendChild(spanLabel);
+        li.appendChild(spanValue);
+        ul.appendChild(li);
+      }
+      summaryListEl.innerHTML = ''; // limpiar cualquier contenido previo
+      summaryListEl.appendChild(ul);
+      summaryListEl.style.display = 'block';
+    } else {
+      summaryListEl.style.display = 'none';
+      summaryListEl.innerHTML = '';
+    }
+
+    // ---- Actualizar totales en tfoot: totalHoras ya refleja la suma totalH + totalExtras
+    document.getElementById('totalHoras').textContent = format(totalHDiaConExtras);
+    document.getElementById('totalFestivo').textContent = format(totF);
+    document.getElementById('totalNocturno').textContent = format(totN);
+    document.getElementById('totalRadioscopia').textContent = format(totR);
+    document.getElementById('totalExtrasFestivo').textContent = format(totFExtra);
+    document.getElementById('totalExtrasNocturno').textContent = format(totNExtra);
+    document.getElementById('totalExtrasRadioscopia').textContent = format(totRExtra);
+    document.getElementById('totalVigilanteTeoricas').textContent = format(totVigilanteTeoricas);
+    document.getElementById('totalVigilanteExtras').textContent = format(totVigilanteExtras);
+    document.getElementById('totalHorasExtras').textContent = format(totHorasExtras);
 
     status.textContent='Procesado correctamente.';
   } catch(e){
     console.error(e);
     status.textContent='Error al procesar PDF.';
   }
+});
+
+/* ------------------------------
+   Código añadido: lógica del toggle
+   - El botón está siempre presente pero deshabilitado hasta que aparezca la tabla.
+   - Cuando aparece la tabla, la dejamos por defecto en estado "colapsado".
+   - Al pulsar el botón alternamos la clase .collapsed en la tabla (solo thead+tbody cambian).
+   - El pie de tabla (tfoot) NO se oculta para que los totales sigan mostrándose.
+   - Añado atributos ARIA mínimos.
+   ------------------------------ */
+
+// MutationObserver que detecta cuando la tabla se añade al tableContainer
+const mo = new MutationObserver((mutations) => {
+  const table = tableContainer.querySelector('table');
+  if (!table) return;
+  if (!table.id) table.id = 'resultTable';
+  // Estado inicial: colapsado
+  table.classList.add('collapsed');
+  // Activar el boton
+  toggleBtn.disabled = false;
+  toggleBtn.setAttribute('aria-pressed','false');
+});
+
+// Observamos cambios de hijos en tableContainer
+mo.observe(tableContainer, { childList: true, subtree: true });
+
+// Toggle click
+toggleBtn.addEventListener('click', () => {
+  const table = tableContainer.querySelector('table');
+  if (!table) return;
+  const isCollapsed = table.classList.contains('collapsed');
+
+  // Animación simple: marcar "collapsing" para bajar opacidad rápidamente, luego cambiar clase
+  table.classList.add('collapsing');
+  // Timeout corto para que se active la transición CSS
+  setTimeout(() => {
+    if (isCollapsed) {
+      table.classList.remove('collapsed');
+      toggleBtn.textContent = 'Ocultar desglose';
+      toggleBtn.setAttribute('aria-pressed','true');
+    } else {
+      table.classList.add('collapsed');
+      toggleBtn.textContent = 'Desglose de Horas';
+      toggleBtn.setAttribute('aria-pressed','false');
+    }
+    // quitar la clase de animación después de la transición
+    setTimeout(()=> table.classList.remove('collapsing'), 220);
+  }, 20);
 });
 </script>
 </body>
