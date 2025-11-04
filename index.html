@@ -82,8 +82,10 @@
   </div>
 
 <script>
+// Establece la ruta del worker de PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
+// Obtiene los elementos del DOM
 const fileInput = document.getElementById('fileInput');
 const status = document.getElementById('status');
 const tableContainer = document.getElementById('tableContainer');
@@ -93,27 +95,34 @@ const holidaysInput = document.getElementById('holidaysInput');
 const saveHolidaysBtn = document.getElementById('saveHolidays');
 const resetHolidaysBtn = document.getElementById('resetHolidays');
 
+// Lista de festivos por defecto y actuales
 const defaultHolidays = ['01-01','06-01','01-05','15-08','12-10','01-11','06-12','08-12','25-12'];
 let holidayList = [...defaultHolidays];
 holidaysInput.value = holidayList.join(',');
 
+// Guarda la lista de festivos introducida por el usuario
 saveHolidaysBtn.addEventListener('click', () => {
   holidayList = holidaysInput.value.split(',').map(s => s.trim()).filter(Boolean);
   status.textContent = 'Festivos actualizados.';
 });
+
+// Restablece la lista de festivos a la por defecto
 resetHolidaysBtn.addEventListener('click', () => {
   holidayList = [...defaultHolidays];
   holidaysInput.value = holidayList.join(',');
   status.textContent = 'Festivos restablecidos.';
 });
 
+// Mapeo de nombres de meses a índices
 const monthNames = {
   'enero':0,'febrero':1,'marzo':2,'abril':3,'mayo':4,'junio':5,
   'julio':6,'agosto':7,'septiembre':8,'setiembre':8,'octubre':9,'noviembre':10,'diciembre':11
 };
 
+// Comprueba si un año es bisiesto
 function isLeapYear(y){ return (y%4===0 && y%100!==0) || (y%400===0); }
 
+// Parsea el horario y devuelve un objeto con las fechas de inicio y fin
 function parseHorario(day, monthIndex, year, horario){
   if(!horario || horario.toUpperCase()==='LIBRE') return null;
   const m = horario.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
@@ -125,6 +134,7 @@ function parseHorario(day, monthIndex, year, horario){
   return {start, end};
 }
 
+// Calcula la superposición de tiempo en horas entre dos intervalos
 function overlap(aStart, aEnd, bStart, bEnd){
   const s = aStart > bStart ? aStart : bStart;
   const e = aEnd < bEnd ? aEnd : bEnd;
@@ -132,8 +142,10 @@ function overlap(aStart, aEnd, bStart, bEnd){
   return diff > 0 ? diff : 0;
 }
 
+// Formatea un número a dos decimales con coma como separador
 function format(n){ return n.toFixed(2).replace('.', ','); }
 
+// Limpia la descripción del servicio
 function limpiarServicio(text) {
   if (!text) return '—';
   const stopWords = /(SILC|CAIXABANK|CPD|Camí|Parc|Cerdanyola|VALLES|INMOBLES)/i;
@@ -143,6 +155,7 @@ function limpiarServicio(text) {
   return text || '—';
 }
 
+// Genera los intervalos de fechas para los días festivos
 function generateFestiveIntervals(month, year, rows){
   const intervals = [];
   for(const e of holidayList){
@@ -155,6 +168,7 @@ function generateFestiveIntervals(month, year, rows){
   return intervals;
 }
 
+// Se ejecuta cuando se selecciona un archivo
 fileInput.addEventListener('change', async ev=>{
   const file = ev.target.files[0];
   if(!file) return;
@@ -163,6 +177,7 @@ fileInput.addEventListener('change', async ev=>{
   extrasEl.textContent = '';
 
   try{
+    // Lee el contenido del PDF
     const buf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({data:buf}).promise;
     let lines=[];
@@ -183,18 +198,36 @@ fileInput.addEventListener('change', async ev=>{
       if(row.length) lines.push(row.map(r=>r.t).join(' ').trim());
     }
 
+    // Extrae el mes y el año del texto del PDF
     let month=null, year=null;
     for(const l of lines){
       const lower = l.toLowerCase();
-      for(const m in monthNames){ if(lower.includes(m)) month = monthNames[m]; }
+      // Busca el mes solo si aún no se ha encontrado para evitar sobrescribirlo.
+      if (month === null) {
+        for(const m in monthNames){
+          if(lower.includes(m)) {
+            month = monthNames[m];
+            break; // Sale del bucle interior una vez que encuentra el mes en la línea.
+          }
+        }
+      }
+
+      // La búsqueda del año sigue igual, normalmente se encuentra cerca.
       const y = l.match(/(20\d{2})/); if(y) year=parseInt(y[1]);
+
+      // Si ya hemos encontrado el mes y el año, podemos dejar de recorrer el documento.
+      if (month !== null && year !== null) {
+          break;
+      }
     }
     if(month===null) month = new Date().getMonth();
     if(!year) year = new Date().getFullYear();
 
+    // Filtra las líneas para obtener solo las filas de la tabla
     const stop=lines.findIndex(l=>/TOTAL\s+HORAS|Próxima fecha/i.test(l));
     if(stop!==-1) lines=lines.slice(0,stop);
 
+    // Parsea las filas para extraer los datos
     const rows=[], reDia=/^\*?\s*(\d{1,2})\b/, reHor=/^(LIBRE|\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})/i, reNum=/(\d{1,3}[.,]\d{2})/g;
     for(const l of lines){
       const m=l.match(reDia); if(!m) continue;
@@ -208,23 +241,29 @@ fileInput.addEventListener('change', async ev=>{
 
     if(rows.length===0){status.textContent='No se detectaron filas válidas.';return;}
 
+    // Limpia y prepara la tabla
     tableContainer.innerHTML='';
     const tmpl=document.getElementById('tableTemplate');
     const clone=tmpl.content.cloneNode(true);
     const tbody=clone.getElementById('tableBody');
 
+    // Calcula las horas teóricas del mes
     const festivos=generateFestiveIntervals(month,year,rows);
     const diasMes=Math.max(...rows.map(r=>r.dia));
     const coef=1782/(isLeapYear(year)?335:334);
     const horasTeoricasMes=coef*diasMes;
 
+    // Inicializa los totales
     let acumHoras=0;
     let totH=0, totF=0, totN=0, totR=0, totFExtra=0, totNExtra=0, totRExtra=0;
     let totVigilanteTeoricas=0, totVigilanteExtras=0, totHorasExtras=0;
 
+    // Itera sobre las filas para calcular las horas
     for(const r of rows){
       let hNum=parseFloat(r.horas.replace(',','.'))||0;
       let hNormal=0, hExtra=0;
+
+      // Separa las horas en normales y extras
       if(acumHoras < horasTeoricasMes){
         if(acumHoras + hNum <= horasTeoricasMes){
           hNormal = hNum;
@@ -243,6 +282,7 @@ fileInput.addEventListener('change', async ev=>{
       let vigTeor=0, vigExtra=0;
       const rng=parseHorario(r.dia,month,year,r.horario);
       if(rng){
+        // Calcula las horas festivas
         for(const f of festivos){
           const ov = overlap(rng.start,rng.end,f.start,f.end);
           if(acumHoras - hNormal < horasTeoricasMes){
@@ -254,6 +294,7 @@ fileInput.addEventListener('change', async ev=>{
             festExtra += ov;
           }
         }
+        // Calcula las horas nocturnas
         const nStart=new Date(rng.start.getFullYear(),rng.start.getMonth(),rng.start.getDate(),22,0,0);
         const nEnd=new Date(nStart.getTime()+8*3600000);
         const ovN = overlap(rng.start,rng.end,nStart,nEnd);
@@ -267,16 +308,19 @@ fileInput.addEventListener('change', async ev=>{
         }
       }
 
+      // Calcula las horas de radioscopia
       if(r.servicio.toLowerCase().includes('radioscopia básica')){
         ra = hNormal;
         raExtra = hExtra;
       }
 
+      // Calcula las horas de vigilante con arma
       if(r.servicio.toLowerCase().includes('vigilante con arma')){
         vigTeor = hNormal;
         vigExtra = hExtra;
       }
 
+      // Acumula los totales
       const diaHExtra = hExtra; // todas las horas extras
       totHorasExtras += diaHExtra;
       totH += hNormal;
@@ -289,6 +333,7 @@ fileInput.addEventListener('change', async ev=>{
       totVigilanteTeoricas += vigTeor;
       totVigilanteExtras += vigExtra;
 
+      // Crea la fila de la tabla
       const tr=document.createElement('tr');
       tr.className='border-b';
       tr.innerHTML=`
@@ -308,6 +353,7 @@ fileInput.addEventListener('change', async ev=>{
       tbody.appendChild(tr);
     }
 
+    // Muestra los totales en el pie de la tabla
     tableContainer.appendChild(clone);
     document.getElementById('totalHoras').textContent=format(totH);
     document.getElementById('totalFestivo').textContent=format(totF);
